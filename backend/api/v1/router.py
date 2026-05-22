@@ -9,7 +9,7 @@ from datetime import datetime
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from backend.api.v1 import alerts, gdpr, transactions
+from backend.api.v1 import alerts, compliance, gdpr, transactions
 from backend.config.settings import get_settings
 
 settings = get_settings()
@@ -21,6 +21,7 @@ api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(transactions.router)
 api_router.include_router(alerts.router)
 api_router.include_router(gdpr.router)
+api_router.include_router(compliance.router)
 
 
 # -- Auth Router (prefix="/auth" — nested under api_router "/api/v1") ---------

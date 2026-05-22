@@ -287,18 +287,28 @@ class AnomalyDetector:
             return 0
 
     def _is_bank_holiday(self, timestamp) -> bool:
+        """Check Swiss (ZH) and German (HE/Frankfurt) public holidays via swiss_holidays module."""
         if timestamp is None:
             return False
         try:
-            if hasattr(timestamp, "month"):
-                month, day = timestamp.month, timestamp.day
+            from datetime import date, datetime
+            if hasattr(timestamp, "date"):
+                check_date = timestamp.date() if callable(timestamp.date) else timestamp
+            elif hasattr(timestamp, "year"):
+                check_date = date(timestamp.year, timestamp.month, timestamp.day)
             else:
-                from datetime import datetime
                 dt = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
-                month, day = dt.month, dt.day
-            # Swiss + German public holidays
-            HOLIDAYS = {(1,1),(1,2),(5,1),(8,1),(10,3),(12,25),(12,26),(12,31)}
-            return (month, day) in HOLIDAYS
+                check_date = dt.date()
+
+            try:
+                from backend.utils.swiss_holidays import is_bank_holiday
+                # Check CH/ZH (primary market) and DE/HE (Frankfurt)
+                return is_bank_holiday(check_date, country="CH", canton="ZH") or \
+                       is_bank_holiday(check_date, country="DE", state="HE")
+            except ImportError:
+                # Fallback: essential fixed holidays if module unavailable
+                HOLIDAYS = {(1,1),(1,2),(5,1),(8,1),(10,3),(12,25),(12,26),(12,31)}
+                return (check_date.month, check_date.day) in HOLIDAYS
         except Exception:
             return False
 
