@@ -1,0 +1,53 @@
+{
+  "api": {
+    "errors": {
+      "not_authenticated": "Authentifizierung erforderlich. Bitte melden Sie sich an.",
+      "insufficient_permissions": "Unzureichende Berechtigungen für diese Aktion.",
+      "insufficient_role": "Fehlende Rolle: {role}",
+      "rate_limit_exceeded": "Anfragelimit überschritten. Bitte warten Sie eine Minute.",
+      "token_revoked": "Sitzung abgelaufen. Bitte erneut anmelden.",
+      "internal_error": "Ein interner Fehler ist aufgetreten. Bitte kontaktieren Sie den Support.",
+      "validation_error": "Validierungsfehler: {details}",
+      "transaction_not_found": "Transaktion {id} wurde nicht gefunden.",
+      "alert_not_found": "Alert {id} wurde nicht gefunden."
+    },
+    "gdpr": {
+      "deletion_scheduled": "Löschantrag angenommen. Daten werden am {date} gelöscht. Referenz: {ref}",
+      "deletion_cancelled": "Löschantrag {id} wurde erfolgreich storniert.",
+      "legal_hold_active": "Konto unterliegt einer rechtlichen Sperrung (AML-Untersuchung läuft). Löschung nicht möglich.",
+      "retention_active": "Aufbewahrungsfrist läuft noch bis {date}. Löschung nach FINMA-Richtlinien nicht zulässig.",
+      "confirmation_required": "Löschbestätigung ist erforderlich.",
+      "sar_restricted": "Nur Compliance-Beauftragter darf SAR-Status setzen.",
+      "non_anonymized_restricted": "Nicht-anonymisierter Export nur für Compliance-Beauftragte."
+    },
+    "retention_policy": "Transaktionsdaten: 10 Jahre (FINMA); Protokolle: 7 Jahre; Kundenprofile: 5 Jahre nach Kontoschließung."
+  },
+  "risk": {
+    "levels": {
+      "LOW": "Niedrig",
+      "MEDIUM": "Mittel",
+      "HIGH": "Hoch",
+      "CRITICAL": "Kritisch"
+    },
+    "typologies": {
+      "STRUCTURING": "Stückelung (Strukturierung)",
+      "LAYERING": "Verschleierung (Layering)",
+      "INTEGRATION": "Integration",
+      "SMURFING": "Smurfing",
+      "ROUND_TRIPPING": "Kreislaufüberweisung",
+      "SHELL_COMPANY": "Briefkastengesellschaft",
+      "CRYPTO_MIXING": "Krypto-Mixing",
+      "UNKNOWN": "Unbekanntes Muster"
+    }
+  },
+  "alerts": {
+    "statuses": {
+      "OPEN": "Offen",
+      "UNDER_REVIEW": "In Bearbeitung",
+      "ESCALATED": "Eskaliert",
+      "RESOLVED": "Gelöst",
+      "FALSE_POSITIVE": "Falsch-Positiv",
+      "SAR_FILED": "STR eingereicht"
+    }
+  }
+}

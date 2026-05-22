@@ -1,0 +1,53 @@
+{
+  "api": {
+    "errors": {
+      "not_authenticated": "Authentication required. Please log in.",
+      "insufficient_permissions": "Insufficient permissions for this action.",
+      "insufficient_role": "Required role missing: {role}",
+      "rate_limit_exceeded": "Rate limit exceeded. Please wait one minute.",
+      "token_revoked": "Session expired. Please log in again.",
+      "internal_error": "An internal error occurred. Please contact support.",
+      "validation_error": "Validation error: {details}",
+      "transaction_not_found": "Transaction {id} not found.",
+      "alert_not_found": "Alert {id} not found."
+    },
+    "gdpr": {
+      "deletion_scheduled": "Deletion request accepted. Data will be erased on {date}. Reference: {ref}",
+      "deletion_cancelled": "Deletion request {id} has been successfully cancelled.",
+      "legal_hold_active": "Account is under legal hold (active AML investigation). Deletion not possible.",
+      "retention_active": "Retention period active until {date}. Deletion not permitted under FINMA rules.",
+      "confirmation_required": "Deletion confirmation is required.",
+      "sar_restricted": "Only compliance officer can set SAR_FILED status.",
+      "non_anonymized_restricted": "Non-anonymized export restricted to compliance officers."
+    },
+    "retention_policy": "Transaction data: 10 years (FINMA); Audit logs: 7 years; Customer profiles: 5 years after account closure."
+  },
+  "risk": {
+    "levels": {
+      "LOW": "Low",
+      "MEDIUM": "Medium",
+      "HIGH": "High",
+      "CRITICAL": "Critical"
+    },
+    "typologies": {
+      "STRUCTURING": "Structuring",
+      "LAYERING": "Layering",
+      "INTEGRATION": "Integration",
+      "SMURFING": "Smurfing",
+      "ROUND_TRIPPING": "Round-Tripping",
+      "SHELL_COMPANY": "Shell Company",
+      "CRYPTO_MIXING": "Crypto Mixing",
+      "UNKNOWN": "Unknown Pattern"
+    }
+  },
+  "alerts": {
+    "statuses": {
+      "OPEN": "Open",
+      "UNDER_REVIEW": "Under Review",
+      "ESCALATED": "Escalated",
+      "RESOLVED": "Resolved",
+      "FALSE_POSITIVE": "False Positive",
+      "SAR_FILED": "SAR Filed"
+    }
+  }
+}

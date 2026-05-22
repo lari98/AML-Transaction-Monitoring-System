@@ -1,0 +1,242 @@
+name: AML Monitoring — CI Pipeline
+# Runs on every PR: lint → type-check → security → unit tests → integration tests → container build
+
+on:
+  pull_request:
+    branches: [main, develop, "release/*"]
+  push:
+    branches: [develop]
+
+env:
+  PYTHON_VERSION: "3.11"
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/aml-backend
+
+jobs:
+  # ── 1. Code Quality ─────────────────────────────────────────────────────
+  lint-and-typecheck:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install linting tools
+        run: pip install ruff mypy bandit isort --break-system-packages
+
+      - name: Ruff lint
+        run: ruff check backend/ streaming/ tests/ --output-format=github
+
+      - name: Ruff format check
+        run: ruff format --check backend/ streaming/ tests/
+
+      - name: MyPy type check
+        run: mypy backend/ --ignore-missing-imports --strict-optional
+        continue-on-error: true   # Type errors are warnings in CI
+
+      - name: isort import order
+        run: isort --check-only backend/ streaming/ tests/
+
+  # ── 2. Security Scanning ────────────────────────────────────────────────
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install security tools
+        run: pip install bandit safety --break-system-packages
+
+      - name: Bandit SAST scan
+        run: |
+          bandit -r backend/ -ll -f json -o bandit-report.json || true
+          bandit -r backend/ -ll -f txt
+
+      - name: Safety dependency scan
+        run: safety check -r backend/requirements.txt --output text || true
+
+      - name: Semgrep SAST
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: "p/python p/security-audit p/owasp-top-ten"
+        continue-on-error: true
+
+      - name: Upload security reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-reports
+          path: bandit-report.json
+
+  # ── 3. Unit Tests ────────────────────────────────────────────────────────
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: [lint-and-typecheck]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r backend/requirements.txt --break-system-packages
+          pip install -r tests/requirements-test.txt --break-system-packages
+
+      - name: Create test .env
+        run: |
+          echo "SECRET_KEY=test-secret-key-32-chars-minimum-here" > .env
+          echo "PII_ENCRYPTION_KEY=test-pii-key-32-chars-minimum-here" >> .env
+          echo "DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test_db" >> .env
+          echo "APP_ENV=development" >> .env
+
+      - name: Run unit tests
+        run: |
+          python -m pytest tests/unit/ -v \
+            --tb=short \
+            --cov=backend \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --cov-fail-under=70 \
+            -p no:warnings
+        env:
+          SECRET_KEY: test-secret-key-32-chars-minimum-here
+          PII_ENCRYPTION_KEY: test-pii-key-32-chars-minimum-here
+          DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test_db
+          APP_ENV: development
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage.xml
+          fail_ci_if_error: false
+
+  # ── 4. Integration Tests ─────────────────────────────────────────────────
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [unit-tests]
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: aml_user
+          POSTGRES_PASSWORD: test_pass
+          POSTGRES_DB: aml_test_db
+        options: >-
+          --health-cmd "pg_isready -U aml_user"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install -r backend/requirements.txt --break-system-packages
+          pip install -r tests/requirements-test.txt --break-system-packages
+
+      - name: Run integration tests
+        run: |
+          python -m pytest tests/integration/ -v \
+            --tb=short \
+            -m "not slow" \
+            --timeout=60
+        env:
+          SECRET_KEY: test-secret-key-32-chars-minimum-here
+          PII_ENCRYPTION_KEY: test-pii-key-32-chars-minimum-here
+          DATABASE_URL: postgresql+asyncpg://aml_user:test_pass@localhost:5432/aml_test_db
+          REDIS_URL: redis://localhost:6379/0
+          APP_ENV: development
+
+  # ── 5. Container Build & Scan ─────────────────────────────────────────────
+  build-and-scan:
+    name: Build & Security Scan Container
+    runs-on: ubuntu-latest
+    needs: [security-scan, integration-tests]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: false
+          tags: ${{ env.IMAGE_NAME }}:pr-${{ github.event.pull_request.number }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          outputs: type=docker,dest=/tmp/aml-backend.tar
+
+      - name: Load image for scanning
+        run: docker load --input /tmp/aml-backend.tar
+
+      - name: Trivy container scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:pr-${{ github.event.pull_request.number }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+        continue-on-error: true
+
+      - name: Upload Trivy results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+
+  # ── 6. PR Summary ────────────────────────────────────────────────────────
+  pr-summary:
+    name: PR Check Summary
+    runs-on: ubuntu-latest
+    needs: [lint-and-typecheck, security-scan, unit-tests, integration-tests, build-and-scan]
+    if: always()
+    steps:
+      - name: Check all jobs
+        run: |
+          echo "## CI Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Lint & Type Check | ${{ needs.lint-and-typecheck.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Scan     | ${{ needs.security-scan.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Unit Tests        | ${{ needs.unit-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Integration Tests | ${{ needs.integration-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Container Build   | ${{ needs.build-and-scan.result }} |" >> $GITHUB_STEP_SUMMARY

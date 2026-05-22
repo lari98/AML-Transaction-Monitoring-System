@@ -1,0 +1,206 @@
+name: AML Monitoring — CD Pipeline
+# Blue-green deployment to Azure Kubernetes Service (AKS)
+# Staging: auto on main merge | Production: manual approval gate
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options: [staging, production]
+      force_deploy:
+        description: "Skip approval gate (emergency only)"
+        type: boolean
+        default: false
+
+env:
+  PYTHON_VERSION: "3.11"
+  REGISTRY: ${{ secrets.ACR_LOGIN_SERVER }}
+  IMAGE_NAME: aml-backend
+  AKS_CLUSTER: aml-monitoring-aks
+  AKS_RESOURCE_GROUP: rg-aml-monitoring-prod
+
+jobs:
+  # ── Build & Push Container ─────────────────────────────────────────────
+  build-and-push:
+    name: Build & Push to ACR
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Login to Azure Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+          build-args: |
+            PYTHON_VERSION=${{ env.PYTHON_VERSION }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            GIT_SHA=${{ github.sha }}
+
+  # ── Deploy to Staging ──────────────────────────────────────────────────
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build-and-push]
+    environment:
+      name: staging
+      url: https://aml-staging.bank.internal
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set AKS context
+        uses: azure/aks-set-context@v3
+        with:
+          resource-group: ${{ env.AKS_RESOURCE_GROUP }}
+          cluster-name: ${{ env.AKS_CLUSTER }}
+
+      - name: Deploy to staging namespace
+        run: |
+          kubectl set image deployment/aml-backend \
+            backend=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.image_tag }} \
+            --namespace staging
+          kubectl rollout status deployment/aml-backend --namespace staging --timeout=300s
+
+      - name: Run smoke tests
+        run: |
+          STAGING_URL="https://aml-staging.bank.internal"
+          curl -f "${STAGING_URL}/api/v1/health" || exit 1
+          echo "Staging smoke tests passed"
+
+      - name: Run API contract tests
+        run: |
+          pip install schemathesis --break-system-packages
+          schemathesis run https://aml-staging.bank.internal/openapi.json \
+            --auth-type bearer \
+            --auth ${{ secrets.STAGING_API_TOKEN }} \
+            --checks not_a_server_error
+        continue-on-error: true
+
+  # ── Compliance Approval Gate ──────────────────────────────────────────
+  compliance-approval:
+    name: Compliance Sign-off Required
+    runs-on: ubuntu-latest
+    needs: [deploy-staging]
+    environment:
+      name: compliance-approval    # Requires manual approval in GitHub
+    if: github.ref == 'refs/heads/main' && !inputs.force_deploy
+    steps:
+      - name: Compliance checkpoint
+        run: |
+          echo "Production deployment approved by compliance team."
+          echo "SHA: ${{ github.sha }}"
+          echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  # ── Deploy to Production (Blue-Green) ────────────────────────────────
+  deploy-production:
+    name: Deploy to Production (Blue-Green)
+    runs-on: ubuntu-latest
+    needs: [compliance-approval]
+    environment:
+      name: production
+      url: https://aml.bank.internal
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Set AKS context
+        uses: azure/aks-set-context@v3
+        with:
+          resource-group: ${{ env.AKS_RESOURCE_GROUP }}
+          cluster-name: ${{ env.AKS_CLUSTER }}
+
+      - name: Blue-Green deployment
+        run: |
+          # Deploy to green slot
+          kubectl set image deployment/aml-backend-green \
+            backend=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-and-push.outputs.image_tag }} \
+            --namespace production
+          kubectl rollout status deployment/aml-backend-green --namespace production --timeout=300s
+
+          # Run production smoke tests against green
+          GREEN_URL=$(kubectl get service aml-backend-green-svc -n production -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          curl -f "http://${GREEN_URL}/api/v1/health" || exit 1
+
+          # Switch traffic: update ingress to point to green
+          kubectl patch ingress aml-ingress -n production \
+            --type=json \
+            -p='[{"op": "replace", "path": "/spec/rules/0/http/paths/0/backend/service/name", "value": "aml-backend-green-svc"}]'
+
+          echo "Traffic switched to green deployment"
+
+      - name: Post-deployment validation
+        run: |
+          sleep 30  # Wait for traffic to stabilize
+          PROD_URL="https://aml.bank.internal"
+          for i in 1 2 3; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${PROD_URL}/api/v1/health")
+            if [ "$STATUS" = "200" ]; then
+              echo "Production health check $i/3: OK"
+            else
+              echo "FAIL: Health check returned $STATUS"
+              exit 1
+            fi
+            sleep 10
+          done
+
+      - name: Notify deployment
+        if: always()
+        uses: slackapi/slack-github-action@v1.26.0
+        with:
+          channel-id: "aml-deployments"
+          payload: |
+            {
+              "text": "${{ job.status == 'success' && '✅' || '❌' }} AML Monitoring deployed to production",
+              "blocks": [{
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "*AML Monitoring — Production Deployment*\nStatus: ${{ job.status }}\nVersion: ${{ needs.build-and-push.outputs.image_tag }}\nSHA: ${{ github.sha }}"
+                }
+              }]
+            }
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+        continue-on-error: true

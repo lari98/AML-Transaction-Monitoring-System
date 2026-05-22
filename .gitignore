@@ -1,0 +1,80 @@
+# AML Monitoring System .gitignore
+# NEVER commit secrets, PII, or model artifacts
+
+# ── Secrets & Credentials ────────────────────────────────────────────────────
+.env
+.env.local
+.env.production
+*.pem
+*.key
+*.pfx
+*.p12
+secrets/
+credentials/
+
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.pyo
+
+# ── Virtual Environments ─────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── ML / Data ────────────────────────────────────────────────────────────────
+mlruns/
+mlartifacts/
+*.pkl
+*.joblib
+*.h5
+*.onnx
+data/raw/
+data/processed/
+data/pii/
+*.parquet
+*.feather
+
+# ── Notebooks ────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── Docker ───────────────────────────────────────────────────────────────────
+.docker/
+
+# ── IDE ──────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+logs/
+*.log
+audit_logs/
+
+# ── Test Artifacts ───────────────────────────────────────────────────────────
+.pytest_cache/
+test-results/
+coverage.xml
+junit.xml

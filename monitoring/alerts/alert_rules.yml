@@ -1,0 +1,139 @@
+groups:
+  # ── AML Business Alerts ──────────────────────────────────────────────────
+  - name: aml_business
+    interval: 30s
+    rules:
+      - alert: CriticalAMLAlertDetected
+        expr: increase(aml_transactions_flagged_total{risk_level="CRITICAL"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: page
+          team: compliance
+        annotations:
+          summary: "CRITICAL AML Alert — Immediate review required"
+          description: "{{ $value }} CRITICAL risk transaction(s) detected in the last 5 minutes. Account requires immediate freeze review."
+          runbook: "https://wiki.bank.internal/aml/runbook/critical-alert"
+
+      - alert: HighFalsePositiveRate
+        expr: aml_false_positive_rate > 0.15
+        for: 10m
+        labels:
+          severity: warning
+          team: ml-ops
+        annotations:
+          summary: "AML false positive rate above 15%"
+          description: "False positive rate is {{ $value | humanizePercentage }}. Model may need retraining."
+          runbook: "https://wiki.bank.internal/aml/runbook/high-fp-rate"
+
+      - alert: ModelDriftDetected
+        expr: aml_model_psi_score > 0.25
+        for: 5m
+        labels:
+          severity: critical
+          team: ml-ops
+        annotations:
+          summary: "AML model drift detected (PSI > 0.25)"
+          description: "PSI score is {{ $value | humanize }}. Model retraining should be triggered immediately."
+          runbook: "https://wiki.bank.internal/aml/runbook/model-drift"
+
+      - alert: GDPRDeletionSLABreach
+        expr: aml_gdpr_pending_deletions_hours > 24
+        for: 1m
+        labels:
+          severity: critical
+          team: compliance
+        annotations:
+          summary: "GDPR deletion SLA breach — deletion pending > 24h"
+          description: "{{ $value }} deletion request(s) pending for more than 24 hours. GDPR SLA breach."
+
+  # ── API Health Alerts ────────────────────────────────────────────────────
+  - name: aml_api
+    rules:
+      - alert: HighAPIErrorRate
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[5m])) /
+          sum(rate(http_requests_total[5m])) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "API 5xx error rate > 1%"
+          description: "Error rate: {{ $value | humanizePercentage }}"
+
+      - alert: HighAPILatency
+        expr: |
+          histogram_quantile(0.99, rate(aml_model_inference_duration_seconds_bucket[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          team: ml-ops
+        annotations:
+          summary: "ML scoring p99 latency > 500ms"
+          description: "p99 latency: {{ $value | humanizeDuration }}"
+
+      - alert: APIDown
+        expr: up{job="aml_backend"} == 0
+        for: 1m
+        labels:
+          severity: page
+          team: platform
+        annotations:
+          summary: "AML API is DOWN"
+          description: "AML Backend API has been unreachable for > 1 minute."
+
+  # ── Streaming Alerts ─────────────────────────────────────────────────────
+  - name: aml_streaming
+    rules:
+      - alert: KafkaConsumerLag
+        expr: kafka_consumer_group_lag > 10000
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Kafka consumer lag > 10,000 messages"
+          description: "Consumer group lag: {{ $value }}. Real-time transaction processing is falling behind."
+
+      - alert: StreamingIngestionStopped
+        expr: rate(aml_transactions_ingested_total[5m]) == 0
+        for: 10m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Transaction ingestion has stopped"
+          description: "No transactions ingested in the last 10 minutes. Check Kafka connectivity."
+
+  # ── Infrastructure Alerts ────────────────────────────────────────────────
+  - name: aml_infrastructure
+    rules:
+      - alert: DatabaseConnectionPoolSaturated
+        expr: pg_stat_activity_count > 80
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "PostgreSQL connection pool near saturation"
+          description: "Active connections: {{ $value }}/100"
+
+      - alert: RedisMemoryHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Redis memory usage > 85%"
+          description: "Redis memory: {{ $value | humanizePercentage }}"
+
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) < 0.15
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Disk space < 15% remaining"
+          description: "Available disk: {{ $value | humanizePercentage }}"
