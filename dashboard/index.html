@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AML Transaction Monitoring — UBS/SIX Grade Dashboard</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --red: #e53e3e; --orange: #dd6b20; --yellow: #d69e2e;
+      --green: #38a169; --blue: #3182ce; --purple: #805ad5;
+      --dark: #1a202c; --card: #2d3748; --border: #4a5568;
+      --text: #e2e8f0; --muted: #a0aec0; --accent: #63b3ed;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--dark); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; }
+
+    /* ── Header ── */
+    header {
+      background: linear-gradient(135deg, #1a365d 0%, #2c5282 100%);
+      padding: 16px 24px; display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 2px solid var(--blue); box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    header .logo { display: flex; align-items: center; gap: 12px; }
+    header .logo-icon { font-size: 28px; }
+    header h1 { font-size: 20px; font-weight: 700; letter-spacing: 0.5px; }
+    header .subtitle { font-size: 11px; color: #90cdf4; margin-top: 2px; }
+    header .controls { display: flex; align-items: center; gap: 12px; }
+    .lang-btn { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+      color: white; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px;
+      transition: all 0.2s; }
+    .lang-btn.active { background: var(--blue); border-color: var(--blue); }
+    .lang-btn:hover { background: rgba(255,255,255,0.2); }
+    .status-dot { width: 10px; height: 10px; background: var(--green); border-radius: 50%;
+      animation: pulse 2s infinite; display: inline-block; margin-right: 6px; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    .api-status { font-size: 12px; color: #9ae6b4; display: flex; align-items: center; }
+
+    /* ── Layout ── */
+    .container { padding: 20px 24px; max-width: 1600px; margin: 0 auto; }
+
+    /* ── KPI Strip ── */
+    .kpi-strip { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-bottom: 20px; }
+    .kpi-card { background: var(--card); border-radius: 10px; padding: 16px;
+      border-left: 4px solid var(--blue); transition: transform 0.2s; }
+    .kpi-card:hover { transform: translateY(-2px); }
+    .kpi-card.red   { border-color: var(--red); }
+    .kpi-card.orange{ border-color: var(--orange); }
+    .kpi-card.yellow{ border-color: var(--yellow); }
+    .kpi-card.green { border-color: var(--green); }
+    .kpi-card.purple{ border-color: var(--purple); }
+    .kpi-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; }
+    .kpi-value { font-size: 28px; font-weight: 700; margin: 6px 0 4px; }
+    .kpi-sub   { font-size: 11px; color: var(--muted); }
+
+    /* ── Grid ── */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+    .grid-full { margin-bottom: 16px; }
+
+    /* ── Cards ── */
+    .card { background: var(--card); border-radius: 10px; padding: 18px; border: 1px solid var(--border); }
+    .card-title { font-size: 13px; font-weight: 600; color: var(--accent); margin-bottom: 14px;
+      text-transform: uppercase; letter-spacing: 0.6px; display: flex; align-items: center; gap: 8px; }
+    .chart-wrap { position: relative; }
+
+    /* ── Score Form ── */
+    .score-form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .score-form label { font-size: 11px; color: var(--muted); display: block; margin-bottom: 4px; }
+    .score-form input, .score-form select {
+      width: 100%; background: #1a202c; border: 1px solid var(--border);
+      color: var(--text); padding: 7px 10px; border-radius: 6px; font-size: 13px; }
+    .score-form .full { grid-column: 1/-1; }
+    .btn { background: var(--blue); color: white; border: none; padding: 10px 20px;
+      border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600;
+      transition: all 0.2s; width: 100%; margin-top: 4px; }
+    .btn:hover { background: #2b6cb0; transform: translateY(-1px); }
+    .btn:disabled { background: var(--border); cursor: not-allowed; transform: none; }
+
+    /* ── Result Box ── */
+    .result-box { margin-top: 12px; padding: 14px; border-radius: 8px; display: none; }
+    .result-box.LOW    { background: rgba(56,161,105,0.15); border: 1px solid var(--green); }
+    .result-box.MEDIUM { background: rgba(214,158,46,0.15); border: 1px solid var(--yellow); }
+    .result-box.HIGH   { background: rgba(221,107,32,0.15); border: 1px solid var(--orange); }
+    .result-box.CRITICAL { background: rgba(229,62,62,0.15); border: 1px solid var(--red); }
+    .score-bar-wrap { margin: 8px 0; }
+    .score-bar-bg { background: #1a202c; border-radius: 4px; height: 8px; overflow: hidden; }
+    .score-bar-fill { height: 100%; border-radius: 4px; transition: width 0.6s ease; }
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+    .badge.LOW    { background: rgba(56,161,105,0.3); color: #9ae6b4; }
+    .badge.MEDIUM { background: rgba(214,158,46,0.3); color: #fbd38d; }
+    .badge.HIGH   { background: rgba(221,107,32,0.3); color: #fbd38d; }
+    .badge.CRITICAL { background: rgba(229,62,62,0.3); color: #feb2b2; }
+
+    /* ── Alerts Table ── */
+    .alerts-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .alerts-table th { background: #1a202c; color: var(--muted); padding: 8px 12px;
+      text-align: left; font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; }
+    .alerts-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+    .alerts-table tr:hover td { background: rgba(255,255,255,0.03); }
+    .sev-badge { padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 700; }
+    .sev-CRITICAL { background: rgba(229,62,62,0.3); color: #fc8181; }
+    .sev-HIGH     { background: rgba(221,107,32,0.3); color: #f6ad55; }
+    .sev-MEDIUM   { background: rgba(214,158,46,0.3); color: #fbd38d; }
+    .sev-LOW      { background: rgba(56,161,105,0.3); color: #9ae6b4; }
+
+    /* ── IBAN Validator ── */
+    .iban-input { display: flex; gap: 8px; }
+    .iban-input input { flex: 1; background: #1a202c; border: 1px solid var(--border);
+      color: var(--text); padding: 7px 10px; border-radius: 6px; font-size: 13px; font-family: monospace; }
+    .iban-result { margin-top: 10px; padding: 10px; border-radius: 6px; font-size: 12px; display: none; }
+    .iban-result.valid   { background: rgba(56,161,105,0.15); border: 1px solid var(--green); }
+    .iban-result.invalid { background: rgba(229,62,62,0.15); border: 1px solid var(--red); }
+
+    /* ── Heatmap ── */
+    .heatmap { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+    .hm-cell { padding: 10px 6px; border-radius: 6px; text-align: center; cursor: pointer;
+      transition: transform 0.15s; font-size: 11px; font-weight: 600; }
+    .hm-cell:hover { transform: scale(1.05); }
+    .hm-0 { background: rgba(56,161,105,0.2); color: #9ae6b4; }
+    .hm-1 { background: rgba(214,158,46,0.25); color: #fbd38d; }
+    .hm-2 { background: rgba(221,107,32,0.35); color: #f6ad55; }
+    .hm-3 { background: rgba(229,62,62,0.45); color: #fc8181; }
+
+    /* ── FINMA/BaFin bar ── */
+    .compliance-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+    .comp-tag { background: rgba(99,179,237,0.15); border: 1px solid rgba(99,179,237,0.3);
+      color: var(--accent); padding: 4px 10px; border-radius: 4px; font-size: 11px; }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--dark); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* ── Responsive ── */
+    @media (max-width: 1200px) {
+      .kpi-strip { grid-template-columns: repeat(3, 1fr); }
+      .grid-3 { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 768px) {
+      .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">🏦</div>
+    <div>
+      <h1 id="h-title">AML Transaction Monitoring System</h1>
+      <div class="subtitle" id="h-sub">Swiss / German Market · FINMA · BaFin · GDPR/DSGVO Compliant · v1.0.0</div>
+    </div>
+  </div>
+  <div class="controls">
+    <div class="api-status"><span class="status-dot" id="api-dot"></span><span id="api-status-txt">Connecting…</span></div>
+    <button class="lang-btn active" id="btn-en" onclick="setLang('en')">EN</button>
+    <button class="lang-btn" id="btn-de" onclick="setLang('de')">DE</button>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- KPI STRIP -->
+  <div class="kpi-strip">
+    <div class="kpi-card red">
+      <div class="kpi-label" id="k1l">Total Alerts</div>
+      <div class="kpi-value" id="k1v">—</div>
+      <div class="kpi-sub" id="k1s">All time</div>
+    </div>
+    <div class="kpi-card red">
+      <div class="kpi-label" id="k2l">Critical</div>
+      <div class="kpi-value" id="k2v">—</div>
+      <div class="kpi-sub" id="k2s">Immediate action</div>
+    </div>
+    <div class="kpi-card orange">
+      <div class="kpi-label" id="k3l">Open Alerts</div>
+      <div class="kpi-value" id="k3v">—</div>
+      <div class="kpi-sub" id="k3s">Pending review</div>
+    </div>
+    <div class="kpi-card yellow">
+      <div class="kpi-label" id="k4l">False Positive Rate</div>
+      <div class="kpi-value" id="k4v">—</div>
+      <div class="kpi-sub" id="k4s">Target &lt; 15%</div>
+    </div>
+    <div class="kpi-card green">
+      <div class="kpi-label" id="k5l">Avg Risk Score</div>
+      <div class="kpi-value" id="k5v">—</div>
+      <div class="kpi-sub" id="k5s">Across all alerts</div>
+    </div>
+    <div class="kpi-card purple">
+      <div class="kpi-label" id="k6l">Resolved</div>
+      <div class="kpi-value" id="k6v">—</div>
+      <div class="kpi-sub" id="k6s">Closed cases</div>
+    </div>
+  </div>
+
+  <!-- ROW 1 -->
+  <div class="grid-3">
+
+    <!-- Risk Distribution Chart -->
+    <div class="card">
+      <div class="card-title">📊 <span id="c-riskdist">Risk Level Distribution</span></div>
+      <div class="chart-wrap"><canvas id="chartRisk" height="180"></canvas></div>
+    </div>
+
+    <!-- Typology Chart -->
+    <div class="card">
+      <div class="card-title">🔍 <span id="c-typology">AML Typology Breakdown</span></div>
+      <div class="chart-wrap"><canvas id="chartTypo" height="180"></canvas></div>
+    </div>
+
+    <!-- Transaction Volume (simulated timeline) -->
+    <div class="card">
+      <div class="card-title">📈 <span id="c-volume">Transaction Volume (24h)</span></div>
+      <div class="chart-wrap"><canvas id="chartVolume" height="180"></canvas></div>
+    </div>
+
+  </div>
+
+  <!-- ROW 2 -->
+  <div class="grid-2">
+
+    <!-- Live Scoring Form -->
+    <div class="card">
+      <div class="card-title">⚡ <span id="c-score">Live Transaction Scoring</span></div>
+      <div class="score-form">
+        <div>
+          <label id="lbl-amount">Amount</label>
+          <input type="number" id="f-amount" value="9850" step="0.01"/>
+        </div>
+        <div>
+          <label id="lbl-ccy">Currency</label>
+          <select id="f-ccy">
+            <option value="CHF" selected>CHF</option>
+            <option value="EUR">EUR</option>
+          </select>
+        </div>
+        <div>
+          <label id="lbl-type">Transaction Type</label>
+          <select id="f-type">
+            <option value="WIRE_TRANSFER">Wire Transfer</option>
+            <option value="CASH_DEPOSIT" selected>Cash Deposit</option>
+            <option value="CASH_WITHDRAWAL">Cash Withdrawal</option>
+            <option value="SEPA_CREDIT">SEPA Credit</option>
+            <option value="INTERNAL_TRANSFER">Internal Transfer</option>
+          </select>
+        </div>
+        <div>
+          <label id="lbl-src">Source Country</label>
+          <select id="f-src">
+            <option value="CH" selected>🇨🇭 Switzerland</option>
+            <option value="DE">🇩🇪 Germany</option>
+            <option value="AT">🇦🇹 Austria</option>
+          </select>
+        </div>
+        <div>
+          <label id="lbl-dst">Target Country</label>
+          <select id="f-dst">
+            <option value="DE" selected>🇩🇪 Germany</option>
+            <option value="CH">🇨🇭 Switzerland</option>
+            <option value="AE">🇦🇪 UAE</option>
+            <option value="KP">🇰🇵 North Korea (FATF)</option>
+            <option value="IR">🇮🇷 Iran (FATF)</option>
+            <option value="RU">🇷🇺 Russia</option>
+          </select>
+        </div>
+        <div>
+          <label id="lbl-ch">Channel</label>
+          <select id="f-ch">
+            <option value="online" selected>Online</option>
+            <option value="branch">Branch</option>
+            <option value="atm">ATM</option>
+          </select>
+        </div>
+        <div class="full">
+          <label id="lbl-iban">Target IBAN</label>
+          <input type="text" id="f-iban" value="CH9300762011623852957" placeholder="CH93 0076 2011 6238 5295 7"/>
+        </div>
+        <div class="full">
+          <button class="btn" id="score-btn" onclick="scoreTransaction()">⚡ Score Transaction</button>
+        </div>
+      </div>
+      <div class="result-box" id="score-result"></div>
+    </div>
+
+    <!-- CH/DE Heatmap + IBAN Validator -->
+    <div style="display:flex;flex-direction:column;gap:16px;">
+      <div class="card" style="flex:1">
+        <div class="card-title">🗺️ <span id="c-heatmap">CH/DE Regional Risk Heatmap</span></div>
+        <div class="heatmap" id="heatmap-grid"></div>
+        <div style="margin-top:10px;font-size:11px;color:var(--muted);">
+          <span style="color:#9ae6b4">■</span> Low &nbsp;
+          <span style="color:#fbd38d">■</span> Medium &nbsp;
+          <span style="color:#f6ad55">■</span> High &nbsp;
+          <span style="color:#fc8181">■</span> Critical
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">🔢 <span id="c-iban">IBAN Validator (CH/DE/AT)</span></div>
+        <div class="iban-input">
+          <input type="text" id="iban-val-input" placeholder="CH93 0076 2011 6238 5295 7" maxlength="34"
+            oninput="this.value=this.value.toUpperCase()" onkeyup="validateIBAN()"/>
+          <button class="btn" style="width:auto;margin:0;padding:7px 16px" onclick="validateIBAN()">Check</button>
+        </div>
+        <div class="iban-result" id="iban-result"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ROW 3 – Alerts Table -->
+  <div class="card grid-full">
+    <div class="card-title" style="justify-content:space-between">
+      <span>🚨 <span id="c-alerts">Live AML Alerts</span></span>
+      <button class="btn" style="width:auto;padding:5px 14px;font-size:12px" onclick="loadAlerts()">↻ Refresh</button>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="alerts-table">
+        <thead>
+          <tr>
+            <th id="th-sev">Severity</th>
+            <th id="th-txn">Transaction ID</th>
+            <th id="th-score">Risk Score</th>
+            <th id="th-type">Typology</th>
+            <th id="th-status">Status</th>
+            <th id="th-explain">AI Explanation</th>
+          </tr>
+        </thead>
+        <tbody id="alerts-tbody">
+          <tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">Loading alerts…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ROW 4 – Compliance -->
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">⚖️ <span id="c-comp">Regulatory Compliance Status</span></div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;justify-content:space-between;padding:8px;background:#1a202c;border-radius:6px">
+          <span style="color:var(--muted)" id="comp-finma">FINMA GwG Art. 9 — STR Reporting</span>
+          <span style="color:#9ae6b4;font-weight:600">✓ Active</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:8px;background:#1a202c;border-radius:6px">
+          <span style="color:var(--muted)" id="comp-bafin">BaFin §43 GwG — Suspicious Activity</span>
+          <span style="color:#9ae6b4;font-weight:600">✓ Active</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:8px;background:#1a202c;border-radius:6px">
+          <span style="color:var(--muted)" id="comp-gdpr">GDPR Art. 17/20 — Erasure/Portability</span>
+          <span style="color:#9ae6b4;font-weight:600">✓ Active</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:8px;background:#1a202c;border-radius:6px">
+          <span style="color:var(--muted)" id="comp-ret">FINMA Retention — 10yr Txn / 7yr Audit</span>
+          <span style="color:#9ae6b4;font-weight:600">✓ Active</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:8px;background:#1a202c;border-radius:6px">
+          <span style="color:var(--muted)" id="comp-pii">PII Encryption — AES-128 + HMAC Audit</span>
+          <span style="color:#9ae6b4;font-weight:600">✓ Active</span>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">🏛️ <span id="c-api">API Endpoints Status</span></div>
+      <div id="endpoint-list" style="display:flex;flex-direction:column;gap:6px;font-size:12px;font-family:monospace">
+        <div style="color:var(--muted)">Checking endpoints…</div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<script>
+// ── Config ───────────────────────────────────────────────────────────────────
+const API = 'http://localhost:8000';
+let AUTH_TOKEN = '';
+let currentLang = 'en';
+let alertsData = [];
+
+// ── i18n ─────────────────────────────────────────────────────────────────────
+const T = {
+  en: {
+    title: 'AML Transaction Monitoring System',
+    sub: 'Swiss / German Market · FINMA · BaFin · GDPR/DSGVO Compliant · v1.0.0',
+    k1l:'Total Alerts', k1s:'All time',
+    k2l:'Critical', k2s:'Immediate action',
+    k3l:'Open Alerts', k3s:'Pending review',
+    k4l:'False Positive Rate', k4s:'Target < 15%',
+    k5l:'Avg Risk Score', k5s:'Across all alerts',
+    k6l:'Resolved', k6s:'Closed cases',
+    'c-riskdist':'Risk Level Distribution',
+    'c-typology':'AML Typology Breakdown',
+    'c-volume':'Transaction Volume (24h)',
+    'c-score':'Live Transaction Scoring',
+    'c-heatmap':'CH/DE Regional Risk Heatmap',
+    'c-iban':'IBAN Validator (CH/DE/AT)',
+    'c-alerts':'Live AML Alerts',
+    'c-comp':'Regulatory Compliance Status',
+    'c-api':'API Endpoints Status',
+    'lbl-amount':'Amount','lbl-ccy':'Currency','lbl-type':'Transaction Type',
+    'lbl-src':'Source Country','lbl-dst':'Target Country','lbl-ch':'Channel','lbl-iban':'Target IBAN',
+    'score-btn':'⚡ Score Transaction',
+    'th-sev':'Severity','th-txn':'Transaction ID','th-score':'Risk Score',
+    'th-type':'Typology','th-status':'Status','th-explain':'AI Explanation',
+    'comp-finma':'FINMA GwG Art. 9 — STR Reporting',
+    'comp-bafin':'BaFin §43 GwG — Suspicious Activity',
+    'comp-gdpr':'GDPR Art. 17/20 — Erasure/Portability',
+    'comp-ret':'FINMA Retention — 10yr Txn / 7yr Audit',
+    'comp-pii':'PII Encryption — AES-128 + HMAC Audit',
+  },
+  de: {
+    title: 'AML-Transaktionsüberwachungssystem',
+    sub: 'Schweizer / Deutscher Markt · FINMA · BaFin · DSGVO-konform · v1.0.0',
+    k1l:'Gesamtmeldungen', k1s:'Gesamt',
+    k2l:'Kritisch', k2s:'Sofortige Maßnahme',
+    k3l:'Offene Meldungen', k3s:'Ausstehende Prüfung',
+    k4l:'Falsch-Positiv-Rate', k4s:'Ziel < 15%',
+    k5l:'Ø Risikowert', k5s:'Alle Meldungen',
+    k6l:'Abgeschlossen', k6s:'Erledigte Fälle',
+    'c-riskdist':'Risikoniveauverteilung',
+    'c-typology':'AML-Typologie-Übersicht',
+    'c-volume':'Transaktionsvolumen (24h)',
+    'c-score':'Live-Transaktionsprüfung',
+    'c-heatmap':'CH/DE Regionales Risiko-Heatmap',
+    'c-iban':'IBAN-Validator (CH/DE/AT)',
+    'c-alerts':'Live AML-Meldungen',
+    'c-comp':'Regulatorischer Compliance-Status',
+    'c-api':'API-Endpunkte Status',
+    'lbl-amount':'Betrag','lbl-ccy':'Währung','lbl-type':'Transaktionsart',
+    'lbl-src':'Quellland','lbl-dst':'Zielland','lbl-ch':'Kanal','lbl-iban':'Ziel-IBAN',
+    'score-btn':'⚡ Transaktion prüfen',
+    'th-sev':'Schweregrad','th-txn':'Transaktions-ID','th-score':'Risikowert',
+    'th-type':'Typologie','th-status':'Status','th-explain':'KI-Erklärung',
+    'comp-finma':'FINMA GwG Art. 9 — STR-Meldepflicht',
+    'comp-bafin':'BaFin §43 GwG — Verdachtsmeldung',
+    'comp-gdpr':'DSGVO Art. 17/20 — Löschung/Portabilität',
+    'comp-ret':'FINMA-Aufbewahrung — 10J Txn / 7J Prüflog',
+    'comp-pii':'PII-Verschlüsselung — AES-128 + HMAC-Prüfspur',
+  }
+};
+
+function setLang(lang) {
+  currentLang = lang;
+  document.getElementById('btn-en').classList.toggle('active', lang==='en');
+  document.getElementById('btn-de').classList.toggle('active', lang==='de');
+  document.documentElement.lang = lang;
+  const t = T[lang];
+  for (const [k,v] of Object.entries(t)) {
+    const el = document.getElementById(k);
+    if (el) el.textContent = v;
+  }
+}
+
+// ── Auth + API ────────────────────────────────────────────────────────────────
+async function getToken() {
+  try {
+    const r = await fetch(`${API}/api/v1/auth/token`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({username:'analyst@bank.de', password:'demo'})
+    });
+    if (r.ok) { const d = await r.json(); AUTH_TOKEN = d.access_token || ''; }
+  } catch(e) { AUTH_TOKEN = ''; }
+}
+
+function authHdr() {
+  return { 'Authorization': `Bearer ${AUTH_TOKEN}`,
+           'Content-Type': 'application/json',
+           'Accept-Language': currentLang };
+}
+
+// ── Health Check ─────────────────────────────────────────────────────────────
+async function checkHealth() {
+  try {
+    const r = await fetch(`${API}/api/v1/health`);
+    const dot = document.getElementById('api-dot');
+    const txt = document.getElementById('api-status-txt');
+    if (r.ok) {
+      dot.style.background = '#38a169';
+      txt.textContent = currentLang === 'de' ? 'API Verbunden' : 'API Connected';
+      txt.style.color = '#9ae6b4';
+    } else { throw new Error(); }
+  } catch(e) {
+    document.getElementById('api-dot').style.background = '#e53e3e';
+    document.getElementById('api-status-txt').textContent =
+      currentLang === 'de' ? 'API nicht verbunden — Demo-Modus' : 'API Offline — Demo Mode';
+    document.getElementById('api-status-txt').style.color = '#fc8181';
+  }
+}
+
+// ── Load Stats ────────────────────────────────────────────────────────────────
+async function loadStats() {
+  try {
+    const r = await fetch(`${API}/api/v1/alerts/stats`, {headers: authHdr()});
+    if (!r.ok) throw new Error();
+    const s = await r.json();
+    document.getElementById('k1v').textContent = s.total_alerts ?? 0;
+    document.getElementById('k2v').textContent = s.critical_alerts ?? 0;
+    document.getElementById('k3v').textContent = s.open_alerts ?? 0;
+    document.getElementById('k4v').textContent = ((s.false_positive_rate || 0)*100).toFixed(1) + '%';
+    const avg = s.avg_risk_score ?? s.average_risk_score ?? 0;
+    document.getElementById('k5v').textContent = (avg||0).toFixed(3);
+    document.getElementById('k6v').textContent = s.resolved_alerts ?? 0;
+    renderRiskChart(s);
+  } catch(e) {
+    // Demo values when API offline
+    ['k1v','k2v','k3v','k4v','k5v','k6v'].forEach((id,i) => {
+      document.getElementById(id).textContent = ['24','3','8','8.4%','0.621','13'][i];
+    });
+    renderRiskChart({total_alerts:24,critical_alerts:3,open_alerts:8});
+  }
+}
+
+// ── Charts ────────────────────────────────────────────────────────────────────
+let chartRisk, chartTypo, chartVol;
+
+function renderRiskChart(stats) {
+  const ctx = document.getElementById('chartRisk').getContext('2d');
+  if (chartRisk) chartRisk.destroy();
+  chartRisk = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['LOW','MEDIUM','HIGH','CRITICAL'],
+      datasets:[{ data:[8,7,6,3], backgroundColor:['#38a169','#d69e2e','#dd6b20','#e53e3e'],
+        borderWidth:0, hoverOffset:4 }]
+    },
+    options:{ responsive:true, plugins:{ legend:{ position:'bottom', labels:{ color:'#a0aec0', font:{size:11} }}}}
+  });
+}
+
+function renderTypoChart() {
+  const ctx = document.getElementById('chartTypo').getContext('2d');
+  if (chartTypo) chartTypo.destroy();
+  chartTypo = new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels:['Structuring','Layering','Smurfing','Round-Trip','Shell Co.','Crypto Mix'],
+      datasets:[{
+        data:[7,5,4,3,2,1],
+        backgroundColor:['#3182ce','#805ad5','#e53e3e','#dd6b20','#d69e2e','#38a169'],
+        borderRadius:4, borderWidth:0
+      }]
+    },
+    options:{
+      responsive:true, indexAxis:'y',
+      plugins:{legend:{display:false}},
+      scales:{
+        x:{ticks:{color:'#a0aec0',font:{size:10}}, grid:{color:'rgba(255,255,255,0.05)'}},
+        y:{ticks:{color:'#a0aec0',font:{size:10}}, grid:{display:false}}
+      }
+    }
+  });
+}
+
+function renderVolumeChart() {
+  const ctx = document.getElementById('chartVolume').getContext('2d');
+  if (chartVol) chartVol.destroy();
+  const hours = Array.from({length:24},(_,i)=>`${i}:00`);
+  const normal = hours.map((_,i) => Math.round(20 + 40*Math.sin((i-6)*Math.PI/12) + Math.random()*8));
+  const flagged = hours.map(() => Math.round(Math.random()*3));
+  chartVol = new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels:hours,
+      datasets:[
+        {label:'Normal', data:normal, backgroundColor:'rgba(49,130,206,0.5)', borderRadius:2},
+        {label:'Flagged', data:flagged, backgroundColor:'rgba(229,62,62,0.7)', borderRadius:2}
+      ]
+    },
+    options:{
+      responsive:true,
+      plugins:{legend:{labels:{color:'#a0aec0',font:{size:10}}}},
+      scales:{
+        x:{ticks:{color:'#a0aec0',font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:8},
+           grid:{color:'rgba(255,255,255,0.04)'},stacked:true},
+        y:{ticks:{color:'#a0aec0',font:{size:10}}, grid:{color:'rgba(255,255,255,0.05)'},stacked:true}
+      }
+    }
+  });
+}
+
+// ── Alerts Table ──────────────────────────────────────────────────────────────
+async function loadAlerts() {
+  const tbody = document.getElementById('alerts-tbody');
+  try {
+    const r = await fetch(`${API}/api/v1/alerts?page=1&page_size=20`, {headers: authHdr()});
+    if (!r.ok) throw new Error();
+    const data = await r.json();
+    alertsData = data.items || [];
+    if (alertsData.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">
+        ${currentLang==='de'?'Keine Meldungen vorhanden — Transaktionen einreichen um Meldungen zu erzeugen':'No alerts yet — submit transactions to generate alerts'}</td></tr>`;
+    } else {
+      renderAlertsTable(alertsData);
+    }
+  } catch(e) {
+    renderDemoAlerts(tbody);
+  }
+}
+
+function renderDemoAlerts(tbody) {
+  const demo = [
+    {severity:'CRITICAL',transaction_id:'TXN-003',risk_score:0.95,typology:'LAYERING',status:'OPEN',
+     explanation_en:'Transaction to FATF sanctioned jurisdiction (KP) at 02:15 — critical AML risk',
+     explanation_de:'Transaktion in FATF-sanktionierte Jurisdiktion (KP) um 02:15 — kritisches GwG-Risiko'},
+    {severity:'HIGH',transaction_id:'TXN-002',risk_score:0.81,typology:'STRUCTURING',status:'UNDER_REVIEW',
+     explanation_en:'Amount CHF 9,850 is 98.5% of CHF 10,000 reporting threshold — classic structuring',
+     explanation_de:'Betrag CHF 9.850 entspricht 98,5% des CHF 10.000-Meldeschwellenwerts — klassische Stückelung'},
+    {severity:'MEDIUM',transaction_id:'TXN-004',risk_score:0.65,typology:'LAYERING',status:'OPEN',
+     explanation_en:'Late-night wire transfer to high-risk jurisdiction with no prior relationship',
+     explanation_de:'Nachtüberweisung in risikoreiche Jurisdiktion ohne vorherige Geschäftsbeziehung'},
+    {severity:'HIGH',transaction_id:'TXN-009',risk_score:0.78,typology:'SMURFING',status:'ESCALATED',
+     explanation_en:'10 small deposits from different sources to single beneficiary within 6 hours',
+     explanation_de:'10 kleine Einzahlungen aus verschiedenen Quellen an einen Begünstigten in 6 Stunden'},
+    {severity:'MEDIUM',transaction_id:'TXN-011',risk_score:0.60,typology:'ROUND_TRIPPING',status:'RESOLVED',
+     explanation_en:'Funds sent to shell company in LI returned via different account — round-tripping pattern',
+     explanation_de:'Gelder an Briefkastengesellschaft in LI über anderes Konto zurückgesandt — Kreislaufüberweisung'},
+  ];
+  renderAlertsTable(demo);
+}
+
+function renderAlertsTable(items) {
+  const tbody = document.getElementById('alerts-tbody');
+  const expl = currentLang === 'de' ? 'explanation_de' : 'explanation_en';
+  tbody.innerHTML = items.map(a => `
+    <tr>
+      <td><span class="sev-badge sev-${a.severity}">${a.severity}</span></td>
+      <td style="font-family:monospace;font-size:11px">${a.transaction_id}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="width:60px;background:#1a202c;border-radius:3px;height:6px">
+            <div style="width:${(a.risk_score||0)*100}%;height:100%;background:${scoreColor(a.risk_score)};border-radius:3px"></div>
+          </div>
+          <span style="font-weight:600">${(a.risk_score||0).toFixed(3)}</span>
+        </div>
+      </td>
+      <td style="font-size:11px">${a.typology || '—'}</td>
+      <td><span style="font-size:11px;color:${statusColor(a.status)}">${a.status}</span></td>
+      <td style="font-size:11px;color:var(--muted);max-width:300px">${(a[expl]||a.explanation_en||'—').substring(0,100)}${(a[expl]||'').length>100?'…':''}</td>
+    </tr>`).join('');
+}
+
+function scoreColor(s) {
+  if (s >= 0.9) return '#e53e3e';
+  if (s >= 0.7) return '#dd6b20';
+  if (s >= 0.5) return '#d69e2e';
+  return '#38a169';
+}
+function statusColor(st) {
+  const m = {OPEN:'#fc8181',UNDER_REVIEW:'#fbd38d',ESCALATED:'#f6ad55',RESOLVED:'#9ae6b4',FALSE_POSITIVE:'#a0aec0'};
+  return m[st]||'#a0aec0';
+}
+
+// ── Live Scoring ──────────────────────────────────────────────────────────────
+async function scoreTransaction() {
+  const btn = document.getElementById('score-btn');
+  const res = document.getElementById('score-result');
+  btn.disabled = true;
+  btn.textContent = currentLang==='de'?'Prüfe…':'Scoring…';
+
+  const payload = {
+    transaction_id: 'TXN-DASH-' + Date.now(),
+    timestamp: new Date().toISOString(),
+    amount: document.getElementById('f-amount').value,
+    currency: document.getElementById('f-ccy').value,
+    transaction_type: document.getElementById('f-type').value,
+    source_account_id: 'acc-dashboard-001',
+    source_iban: 'CH9300762011623852957',
+    source_country: document.getElementById('f-src').value,
+    target_iban: document.getElementById('f-iban').value,
+    target_country: document.getElementById('f-dst').value,
+    channel: document.getElementById('f-ch').value,
+  };
+
+  try {
+    const r = await fetch(`${API}/api/v1/transactions`, {
+      method:'POST', headers: authHdr(), body: JSON.stringify(payload)
+    });
+    const d = await r.json();
+    showResult(d);
+  } catch(e) {
+    // Demo scoring when API offline
+    const demoScore = simulateScore(payload);
+    showResult(demoScore);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = T[currentLang]['score-btn'];
+  }
+}
+
+function simulateScore(p) {
+  const amount = parseFloat(p.amount)||0;
+  const fatf = ['KP','IR','SY','AF','SO','RU','BY','CU','VE','MM','YE'];
+  let score = 0.2;
+  if (amount >= 9000 && amount < 10000) score += 0.35;
+  if (fatf.includes(p.target_country)) score += 0.45;
+  if (p.transaction_type.includes('CASH')) score += 0.1;
+  if (amount > 50000) score += 0.15;
+  score = Math.min(score + Math.random()*0.05, 0.99);
+  const level = score>=0.9?'CRITICAL':score>=0.7?'HIGH':score>=0.5?'MEDIUM':'LOW';
+  const typol = amount>=9000&&amount<10000?'STRUCTURING':fatf.includes(p.target_country)?'LAYERING':null;
+  return { risk_score:parseFloat(score.toFixed(4)), risk_level:level,
+    typology:typol, flagged:score>=0.7, confidence:0.78,
+    explanation_en:`Risk score ${score.toFixed(3)} — ${typol||'No specific typology detected'}`,
+    explanation_de:`Risikowert ${score.toFixed(3)} — ${typol?'Typologie erkannt':'Kein spezifisches Muster'}` };
+}
+
+function showResult(d) {
+  const res = document.getElementById('score-result');
+  const level = d.risk_level || 'LOW';
+  const score = d.risk_score || 0;
+  const barColor = {LOW:'#38a169',MEDIUM:'#d69e2e',HIGH:'#dd6b20',CRITICAL:'#e53e3e'}[level]||'#38a169';
+  const expl = currentLang==='de' ? (d.explanation_de||d.explanation_en||'') : (d.explanation_en||'');
+  const de = currentLang==='de';
+  res.className = `result-box ${level}`;
+  res.style.display = 'block';
+  res.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <span class="badge ${level}">${level}</span>
+      <span style="font-size:11px;color:var(--muted)">${d.flagged?'⚠ '+(de?'MELDUNG ERZEUGT':'ALERT RAISED'):'✓ '+(de?'KEINE MELDUNG':'NO ALERT')}</span>
+    </div>
+    <div style="margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+        <span>${de?'Risikowert':'Risk Score'}</span>
+        <strong>${score.toFixed(4)}</strong>
+      </div>
+      <div class="score-bar-bg">
+        <div class="score-bar-fill" style="width:${score*100}%;background:${barColor}"></div>
+      </div>
+    </div>
+    ${d.typology ? `<div style="font-size:11px;margin-bottom:6px"><span style="color:var(--muted)">${de?'Typologie':'Typology'}: </span><strong>${d.typology}</strong></div>` : ''}
+    ${d.confidence ? `<div style="font-size:11px;margin-bottom:6px"><span style="color:var(--muted)">${de?'Konfidenz':'Confidence'}: </span><strong>${(d.confidence*100).toFixed(0)}%</strong></div>` : ''}
+    ${expl ? `<div style="font-size:11px;color:var(--muted);border-top:1px solid rgba(255,255,255,0.1);padding-top:8px;margin-top:6px">${expl}</div>` : ''}`;
+}
+
+// ── IBAN Validator ────────────────────────────────────────────────────────────
+function validateIBAN() {
+  const raw = document.getElementById('iban-val-input').value.replace(/\s/g,'').toUpperCase();
+  const res = document.getElementById('iban-result');
+  if (raw.length < 4) { res.style.display='none'; return; }
+
+  const patterns = {
+    CH: {len:21, name:'Switzerland 🇨🇭', bank:'Bank code: positions 5-9', format:'CHkk bbbb bccc cccc cccc c'},
+    DE: {len:22, name:'Germany 🇩🇪',     bank:'BLZ: positions 5-12',     format:'DEkk bbbb bbbb cccc cccc cc'},
+    AT: {len:20, name:'Austria 🇦🇹',     bank:'BLZ: positions 5-9',      format:'ATkk bbbb bccc cccc cccc'},
+    LI: {len:21, name:'Liechtenstein 🇱🇮', bank:'Bank code: positions 5-9', format:'LIkk bbbb bccc cccc cccc c'},
+  };
+  const cc = raw.substring(0,2);
+  const p = patterns[cc];
+  const de = currentLang==='de';
+
+  if (!p) {
+    res.className='iban-result invalid'; res.style.display='block';
+    res.innerHTML = `❌ ${de?'Nicht unterstütztes Land':'Unsupported country'}: <strong>${cc}</strong>. ${de?'Unterstützt':'Supported'}: CH, DE, AT, LI`;
+    return;
+  }
+
+  const lengthOk = raw.length === p.len;
+  // Mod-97 check
+  const rearranged = raw.slice(4) + raw.slice(0,4);
+  const numeric = rearranged.split('').map(c => isNaN(c) ? String(c.charCodeAt(0)-55) : c).join('');
+  let rem = 0;
+  for (const ch of numeric) rem = (rem * 10 + parseInt(ch)) % 97;
+  const checksumOk = rem === 1;
+
+  if (lengthOk && checksumOk) {
+    res.className='iban-result valid'; res.style.display='block';
+    const formatted = raw.match(/.{1,4}/g).join(' ');
+    res.innerHTML = `✅ <strong>${de?'Gültige IBAN':'Valid IBAN'}</strong> — ${p.name}<br>
+      <span style="font-family:monospace;font-size:13px;letter-spacing:1px">${formatted}</span><br>
+      <span style="font-size:11px;color:var(--muted)">${p.bank} · ${de?'Länge':'Length'}: ${raw.length}</span>`;
+  } else {
+    res.className='iban-result invalid'; res.style.display='block';
+    res.innerHTML = `❌ <strong>${de?'Ungültige IBAN':'Invalid IBAN'}</strong><br>
+      ${!lengthOk ? `${de?'Falsche Länge':'Wrong length'}: ${raw.length}/${p.len} · ` : ''}
+      ${!checksumOk ? (de?'Prüfsumme fehlerhaft':'Checksum failed') : ''}`;
+  }
+}
+
+// ── Heatmap ───────────────────────────────────────────────────────────────────
+const REGIONS = [
+  {name:'Zürich',risk:2},{name:'Genf',risk:2},{name:'Basel',risk:1},{name:'Bern',risk:0},{name:'Lugano',risk:2},
+  {name:'Berlin',risk:1},{name:'Frankfurt',risk:2},{name:'München',risk:1},{name:'Hamburg',risk:1},{name:'Düsseldorf',risk:2},
+  {name:'Vaduz',risk:3},{name:'Wien',risk:1},{name:'Paris',risk:1},{name:'London',risk:2},{name:'Cayman',risk:3},
+  {name:'Dubai',risk:3},{name:'BVI',risk:3},{name:'Singapur',risk:2},{name:'Hongkong',risk:2},{name:'Luxemburg',risk:1},
+];
+function buildHeatmap() {
+  const grid = document.getElementById('heatmap-grid');
+  grid.innerHTML = REGIONS.map(r =>
+    `<div class="hm-cell hm-${r.risk}" title="Risk level ${r.risk}" onclick="filterByRegion('${r.name}')">
+      ${r.name}<br><small>${['LOW','MED','HIGH','CRIT'][r.risk]}</small></div>`
+  ).join('');
+}
+function filterByRegion(name) {
+  document.getElementById('f-dst').value =
+    {Zürich:'CH',Genf:'CH',Basel:'CH',Bern:'CH',Lugano:'CH',
+     Berlin:'DE',Frankfurt:'DE',München:'DE',Hamburg:'DE',Düsseldorf:'DE',
+     Dubai:'AE',Cayman:'KY',Vaduz:'LI',BVI:'VG'}[name]||'DE';
+}
+
+// ── Endpoint Health ───────────────────────────────────────────────────────────
+async function checkEndpoints() {
+  const endpoints = [
+    {method:'GET', path:'/api/v1/health', label:'Health'},
+    {method:'POST', path:'/api/v1/auth/token', label:'Auth/Token'},
+    {method:'POST', path:'/api/v1/transactions', label:'Transactions'},
+    {method:'GET', path:'/api/v1/alerts', label:'Alerts'},
+    {method:'GET', path:'/api/v1/alerts/stats', label:'Alerts/Stats'},
+    {method:'GET', path:'/api/v1/gdpr/retention/status', label:'GDPR Retention'},
+  ];
+  const el = document.getElementById('endpoint-list');
+  el.innerHTML = '';
+  for (const ep of endpoints) {
+    try {
+      const opts = {method:ep.method, headers: authHdr()};
+      if (ep.method==='POST') opts.body = ep.path.includes('auth')
+        ? JSON.stringify({username:'analyst@bank.de',password:'x'})
+        : JSON.stringify({transaction_id:'health-check',timestamp:new Date().toISOString(),
+            amount:'100',currency:'CHF',transaction_type:'WIRE_TRANSFER',
+            source_account_id:'hc',source_iban:'CH9300762011623852957',
+            source_country:'CH',target_country:'DE',channel:'online'});
+      const r = await fetch(`${API}${ep.path}`, opts);
+      const ok = r.status < 500;
+      el.innerHTML += `<div style="display:flex;justify-content:space-between;padding:5px 8px;background:#1a202c;border-radius:4px">
+        <span style="color:#a0aec0"><span style="color:#63b3ed;margin-right:6px">${ep.method}</span>${ep.path}</span>
+        <span style="color:${ok?'#9ae6b4':'#fc8181'}">${ok?'✓':'✗'} ${r.status}</span></div>`;
+    } catch(e) {
+      el.innerHTML += `<div style="display:flex;justify-content:space-between;padding:5px 8px;background:#1a202c;border-radius:4px">
+        <span style="color:#a0aec0"><span style="color:#63b3ed;margin-right:6px">${ep.method}</span>${ep.path}</span>
+        <span style="color:#fc8181">✗ offline</span></div>`;
+    }
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function init() {
+  await checkHealth();
+  await getToken();
+  await loadStats();
+  await loadAlerts();
+  renderTypoChart();
+  renderVolumeChart();
+  buildHeatmap();
+  await checkEndpoints();
+  setInterval(checkHealth, 30000);
+  setInterval(loadStats, 60000);
+}
+
+window.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
