@@ -1,7 +1,7 @@
 # AML Transaction Monitoring System
 
 > **Production-grade Anti-Money Laundering platform for Swiss and German banks.**  
-> Modelled after UBS / SIX Group workflows. Built for portfolio demonstration and job applications at CH/DE financial institutions.
+> Modelled after Banking workflows. Built for portfolio demonstration and job applications at CH/DE financial institutions.
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111-green)](https://fastapi.tiangolo.com/)
