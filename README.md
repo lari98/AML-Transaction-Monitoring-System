@@ -1,50 +1,47 @@
 # AML Transaction Monitoring System
-### Production-Grade Anti-Money Laundering Platform for Swiss & German Banking
-**Built to UBS / SIX Group Standards | FINMA & BaFin Compliant | GDPR/DSGVO Ready**
+
+> **Production-grade Anti-Money Laundering platform for Swiss and German banks.**  
+> Modelled after UBS / SIX Group workflows. Built for portfolio demonstration and job applications at CH/DE financial institutions.
+
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.111-green)](https://fastapi.tiangolo.com/)
+[![Tests](https://img.shields.io/badge/Tests-26%20passing-brightgreen)]()
+[![Compliance](https://img.shields.io/badge/Compliance-FINMA%20%7C%20BaFin%20%7C%20GDPR-orange)]()
+[![License](https://img.shields.io/badge/License-MIT-lightgrey)]()
 
 ---
 
-## Overview
+## What It Does
 
-The **AML Transaction Monitoring System** is an enterprise AI platform designed for Swiss and German financial institutions to detect, score, explain, and report suspicious financial activity in real time. It combines streaming transaction ingestion, machine learning–based anomaly detection, explainable AI risk scoring, and multilingual (German/English) compliance dashboards into a single unified platform.
-
-This system is modeled after platforms used at **UBS**, **Deutsche Bank**, **SIX Group**, and **Commerzbank** — built for production deployment on Microsoft Azure with Databricks ML.
+| Capability | Implementation |
+|-----------|---------------|
+| **Real-time transaction scoring** | Isolation Forest (47 features) + LightGBM + SHAP explanations |
+| **AML alert management** | Rule-based + ML alerts with severity tiers and bilingual (DE/EN) narratives |
+| **FINMA GwG Art.9 STR** | Automated suspicious transaction report generation for MROS |
+| **BaFin GwG §43 SAR** | Suspicious activity reports for FIU via goAML, §47 non-disclosure |
+| **GDPR Art.17/20** | Right to erasure (pseudonymisation) + data portability |
+| **IBAN validation** | ISO 13616 mod-97 + CH/DE/AT/LI bank registry lookup |
+| **Swiss holiday calendar** | All 26 cantons (ZH, GE, BS, BE, LU, VD, AG, TG, SG, TI) |
+| **German holiday calendar** | All 16 Bundesländer |
+| **Live HTML dashboard** | Chart.js, DE/EN language toggle, live scoring form |
+| **JWT/RBAC** | 6 roles: aml_analyst, compliance_officer, model_developer, auditor, readonly, admin |
+| **PII encryption** | Fernet AES-128 at rest, HMAC-SHA256 audit log signing |
 
 ---
 
-## Architecture Overview
+## Quick Start
 
+```bash
+git clone https://github.com/lari98/AML-Transaction-Monitoring-System.git
+cd AML-Transaction-Monitoring-System
+pip install -r requirements.txt
+cp .env.example .env
+PYTHONPATH=. uvicorn backend.main:app --reload --port 8000
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    AML Monitoring Platform                          │
-│                                                                     │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────────────┐  │
-│  │  Transaction │───▶│    Kafka     │───▶│  Databricks Spark    │  │
-│  │  Simulator   │    │  Streaming   │    │  Stream Processing   │  │
-│  └──────────────┘    └──────────────┘    └──────────┬───────────┘  │
-│                                                     │              │
-│  ┌──────────────────────────────────────────────────▼───────────┐  │
-│  │                    ML Pipeline (MLflow)                       │  │
-│  │  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐  │  │
-│  │  │  Isolation  │  │    DBSCAN    │  │   Risk Scorer +    │  │  │
-│  │  │   Forest    │  │  Clustering  │  │   SHAP Explainer   │  │  │
-│  │  └─────────────┘  └──────────────┘  └────────────────────┘  │  │
-│  └──────────────────────────────────────────────────────────────┘  │
-│                              │                                      │
-│  ┌───────────────────────────▼──────────────────────────────────┐  │
-│  │               FastAPI Backend (REST + WebSocket)             │  │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────────┐  │  │
-│  │  │  Alerts  │  │  GDPR/   │  │  Audit   │  │  Reports   │  │  │
-│  │  │   API    │  │  Delete  │  │   Log    │  │    API     │  │  │
-│  │  └──────────┘  └──────────┘  └──────────┘  └────────────┘  │  │
-│  └──────────────────────────────────────────────────────────────┘  │
-│                              │                                      │
-│  ┌───────────────┐   ┌───────▼──────────┐   ┌─────────────────┐   │
-│  │  Azure Blob   │   │   Power BI       │   │  Prometheus +   │   │
-│  │  Storage      │   │  Dashboards      │   │  Grafana        │   │
-│  └───────────────┘   └──────────────────┘   └─────────────────┘   │
-└─────────────────────────────────────────────────────────────────────┘
-```
+
+Then open `dashboard/index.html` in your browser.
+
+**→ Full guide: [DEMO.md](DEMO.md)**
 
 ---
 
@@ -52,249 +49,96 @@ This system is modeled after platforms used at **UBS**, **Deutsche Bank**, **SIX
 
 ```
 aml-monitoring-system/
-├── backend/                        # FastAPI application
-│   ├── api/v1/                     # REST API endpoints
-│   │   ├── transactions.py         # Transaction ingestion & scoring
-│   │   ├── alerts.py               # AML alert management
-│   │   ├── accounts.py             # Account risk profiles
-│   │   ├── reports.py              # Regulatory reports (SAR, CTR)
-│   │   └── gdpr.py                 # GDPR/DSGVO data rights
-│   ├── core/                       # Security, auth, RBAC
-│   │   ├── security.py             # JWT, encryption, secrets
-│   │   ├── auth.py                 # Authentication flows
-│   │   └── rbac.py                 # Role-based access control
-│   ├── models/                     # Pydantic & DB models
-│   ├── services/                   # Business logic layer
-│   │   ├── ml_service.py           # ML inference orchestration
-│   │   ├── alert_service.py        # Alert lifecycle management
-│   │   ├── audit_service.py        # Immutable audit trails
-│   │   └── gdpr_service.py         # GDPR compliance workflows
-│   ├── ml/                         # ML inference modules
-│   │   ├── anomaly_detector.py     # Isolation Forest inference
-│   │   ├── clustering.py           # DBSCAN cluster assignment
-│   │   ├── risk_scorer.py          # Composite risk scoring
-│   │   └── explainer.py            # SHAP explainability engine
-│   ├── middleware/                 # Logging, auth middleware
-│   └── config/                     # Settings & logging config
-├── databricks/
-│   ├── notebooks/
-│   │   ├── 01_data_ingestion.py    # Delta Lake ingestion
-│   │   ├── 02_feature_engineering.py
-│   │   ├── 03_anomaly_detection.py # Isolation Forest training
-│   │   ├── 04_clustering.py        # DBSCAN clustering
-│   │   ├── 05_risk_scoring.py      # Risk model training
-│   │   ├── 06_model_training.py    # MLflow experiment tracking
-│   │   └── 07_model_evaluation.py  # Drift detection & eval
-│   └── mlflow/
-│       └── experiment_config.py
-├── streaming/
-│   ├── simulator.py                # Transaction stream generator
-│   ├── kafka_producer.py           # Kafka message producer
-│   └── stream_processor.py        # Real-time stream consumer
-├── data/
-│   ├── sample_transactions.csv     # 50k Swiss/German transactions
-│   ├── sample_accounts.csv         # Account profiles
-│   └── generators/
-│       ├── transaction_generator.py
-│       └── aml_pattern_generator.py
-├── monitoring/
-│   ├── prometheus/prometheus.yml
-│   ├── grafana/dashboards/aml_dashboard.json
-│   └── alerts/alert_rules.yml
+├── backend/
+│   ├── api/v1/
+│   │   ├── transactions.py     # POST /transactions — score & ingest
+│   │   ├── alerts.py           # GET/PATCH /alerts — alert management
+│   │   ├── compliance.py       # POST /compliance/sar — SAR/STR generation
+│   │   ├── gdpr.py             # DELETE /gdpr/erasure, GET /gdpr/export
+│   │   └── router.py           # API v1 router + auth endpoints
+│   ├── core/
+│   │   ├── auth.py             # JWT decode, RBAC dependency injection
+│   │   └── security.py         # Token creation, password hashing
+│   ├── ml/
+│   │   ├── anomaly_detector.py # IsolationForest, 47-feature extractor
+│   │   └── risk_scorer.py      # LightGBM + SHAP + heuristic fallback
+│   ├── utils/
+│   │   ├── iban_validator.py   # ISO 13616 mod-97 IBAN validation
+│   │   ├── bank_registry.py    # CH IID / DE BLZ bank registry
+│   │   ├── swiss_holidays.py   # CH canton + DE state holiday calendar
+│   │   └── compliance_reporter.py # FINMA STR + BaFin SAR generators
+│   └── config/
+│       ├── settings.py         # Pydantic BaseSettings, env vars
+│       └── logging_config.py   # Structlog JSON logging, PII masking
 ├── tests/
-│   ├── unit/                       # ML model unit tests
-│   ├── integration/                # API, security, GDPR tests
-│   ├── performance/                # Load tests
-│   └── docs/testing_documentation.md
-├── ci-cd/.github/workflows/
-│   ├── ci.yml                      # PR checks
-│   └── cd.yml                      # Deployment pipeline
-├── infrastructure/
-│   ├── azure/main.bicep            # Azure IaC
-│   └── terraform/                  # Terraform alternative
-├── locales/
-│   ├── de/messages.json            # German translations
-│   └── en/messages.json            # English translations
-├── docker-compose.yml
-├── Makefile
-├── README.md
-└── architecture.md
+│   ├── unit/
+│   │   └── test_anomaly_detection.py  # 26 unit tests (banking QA grade)
+│   └── conftest.py             # Shared fixtures (CH/DE transaction samples)
+├── dashboard/
+│   └── index.html              # Self-contained live dashboard
+├── DEMO.md                     # Step-by-step local run guide
+└── docs/
+    └── portfolio_summary.md    # Technical decisions for interviews
 ```
 
 ---
 
-## Technology Stack
+## API Reference
 
-| Component | Technology | Purpose |
-|---|---|---|
-| **Streaming** | Apache Kafka + Spark Structured Streaming | Real-time transaction ingestion |
-| **ML Training** | Databricks ML + MLflow | Model training, versioning, registry |
-| **Anomaly Detection** | Isolation Forest (scikit-learn) | Detect unusual transactions |
-| **Clustering** | DBSCAN | Group suspicious behavior patterns |
-| **Risk Scoring** | Gradient Boosting + SHAP | Explainable risk scores |
-| **Backend API** | FastAPI + Python 3.11 | REST endpoints + WebSocket alerts |
-| **Database** | PostgreSQL 15 + Redis | Persistence + caching |
-| **Storage** | Azure Blob Storage | Raw transaction archive |
-| **Auth** | JWT + RBAC | Fine-grained access control |
-| **Dashboards** | Power BI + Grafana | Operational & executive views |
-| **Monitoring** | Prometheus + Azure Monitor | Metrics, drift detection, alerting |
-| **CI/CD** | GitHub Actions | Automated test, build, deploy |
-| **Container** | Docker + Docker Compose | Local & cloud deployment |
-| **Cloud** | Microsoft Azure | Production infrastructure |
-| **Compliance** | GDPR/DSGVO, FINMA, BaFin | Swiss & German regulatory |
+Base URL: `http://localhost:8000`  
+Interactive docs: `http://localhost:8000/docs`
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| `POST` | `/api/v1/auth/token` | — | Get JWT token |
+| `POST` | `/api/v1/transactions` | analyst+ | Score transaction |
+| `GET` | `/api/v1/alerts` | analyst+ | List AML alerts |
+| `PATCH` | `/api/v1/alerts/{id}` | analyst+ | Update alert status |
+| `POST` | `/api/v1/compliance/sar` | compliance_officer | Generate FINMA STR / BaFin SAR |
+| `GET` | `/api/v1/compliance/reports` | analyst+ | List compliance reports |
+| `GET` | `/api/v1/compliance/stats` | analyst+ | Compliance statistics |
+| `GET` | `/api/v1/gdpr/export/{account_id}` | analyst+ | GDPR Art.20 export |
+| `DELETE` | `/api/v1/gdpr/erasure/{account_id}` | compliance_officer | GDPR Art.17 erasure |
+| `GET` | `/api/v1/health` | — | Health check |
 
 ---
 
-## Compliance & Regulatory
+## Compliance Framework
 
-### FINMA (Swiss Financial Market Supervisory Authority)
-- Transaction monitoring per FINMA Circular 2017/1
-- SAR (Suspicious Activity Report) generation
-- 10-year audit trail retention (configurable)
-- Immediate alert escalation for FATF high-risk jurisdictions
-
-### BaFin (German Federal Financial Supervisory Authority)
-- GwG (Geldwäschegesetz) compliance
-- STR (Suspicious Transaction Report) filing
-- KYC risk categorization integration
-- EU AMLD6 pattern detection
-
-### GDPR / DSGVO
-- PII masking at ingestion (AES-256 encryption)
-- Right-to-erasure workflow with audit confirmation
-- Data retention enforcement (configurable per jurisdiction)
-- Role-based access with least-privilege principle
-- Immutable audit trails (tamper-evident logging)
+| Regulation | Coverage |
+|-----------|---------|
+| **FINMA GwG Art.9** | STR generation, MROS reporting, 10-year retention |
+| **BaFin GwG §43** | SAR generation, FIU via goAML, §47 tipping-off prohibition |
+| **GDPR/DSGVO Art.17** | Right to erasure via PII pseudonymisation |
+| **GDPR/DSGVO Art.20** | Data portability (JSON export) |
+| **FATF Rec. 20** | Suspicious transaction reporting framework |
+| **AMLD6** | 6th EU Anti-Money Laundering Directive typologies |
+| **ISO 13616** | IBAN structure and checksum validation |
 
 ---
 
-## Quick Start
+## Version History
 
-### Prerequisites
-- Docker 24+ and Docker Compose
-- Python 3.11+
-- Azure CLI (for cloud deployment)
-
-### Local Development
-
-```bash
-# 1. Clone and configure
-git clone https://github.com/your-org/aml-monitoring-system
-cd aml-monitoring-system
-make env                    # Copy .env.example → .env
-# Edit .env with your credentials
-
-# 2. Generate sample data
-make seed-data              # Creates 50k Swiss/German transactions
-
-# 3. Start all services
-make build
-make up
-
-# 4. Access the system
-# API Documentation:  http://localhost:8000/docs
-# API (German):       http://localhost:8000/docs?lang=de
-# Grafana:            http://localhost:3000  (admin/admin)
-# Prometheus:         http://localhost:9090
-
-# 5. Run the transaction simulator
-make dev-stream
-
-# 6. Run all tests
-make test
-```
+| Version | Release | Highlights |
+|---------|---------|-----------|
+| **v1.0.0** | 2024-Q1 | Portfolio release — complete docs, DEMO.md, GitHub Release |
+| v0.4.0 | 2024-Q1 | IBAN validator, bank registry, CH/DE holiday calendars, FINMA/BaFin SAR API |
+| v0.3.0 | 2024-Q1 | Live HTML dashboard with DE/EN i18n, Chart.js, IBAN validator UI |
+| v0.2.0 | 2024-Q1 | FastAPI server, ML pipeline fitted at startup, live transaction scoring |
+| v0.1.0 | 2024-Q1 | Core ML, RBAC, GDPR endpoints — all 26 unit tests passing |
 
 ---
 
-## API Authentication
+## For Interviewers
 
-The API uses JWT Bearer tokens with RBAC. Available roles:
-
-| Role | Access Level |
-|---|---|
-| `compliance_officer` | Full read/write + GDPR actions |
-| `aml_analyst` | Read alerts, update false positives |
-| `risk_manager` | Read reports, export data |
-| `auditor` | Read-only audit logs |
-| `data_admin` | GDPR delete workflows only |
-| `readonly` | Dashboard data only |
-
-```bash
-# Get token
-curl -X POST http://localhost:8000/api/v1/auth/token \
-  -H "Content-Type: application/json" \
-  -d '{"username": "analyst@bank.de", "password": "CHANGE_ME"}'
-
-# Use token
-curl http://localhost:8000/api/v1/alerts \
-  -H "Authorization: Bearer <token>" \
-  -H "Accept-Language: de"
-```
+See **[docs/portfolio_summary.md](docs/portfolio_summary.md)** for:
+- Why IsolationForest over DBSCAN or deep learning
+- How the FINMA/BaFin dual compliance framework works
+- The 47-feature AML engineering rationale
+- Scalability path to 1M transactions/day
+- False positive rate control strategy
 
 ---
 
-## Multilingual Support (DE/EN)
-
-All API responses, alert messages, and dashboard labels support German and English:
-
-```bash
-# German response
-curl http://localhost:8000/api/v1/alerts/ALT-001 \
-  -H "Accept-Language: de"
-
-# English response
-curl http://localhost:8000/api/v1/alerts/ALT-001 \
-  -H "Accept-Language: en"
-```
-
-Risk explanations, SHAP feature labels, and audit messages are all translated.
-
----
-
-## Testing
-
-```bash
-make test               # Full suite
-make test-unit          # ML model tests
-make test-security      # API security & GDPR
-make test-performance   # Load tests (Locust)
-make test-coverage      # HTML coverage report
-```
-
-See `tests/docs/testing_documentation.md` for full QA documentation.
-
----
-
-## Deployment
-
-### Azure Production
-```bash
-# Provision infrastructure
-cd infrastructure/terraform
-terraform init && terraform plan && terraform apply
-
-# Deploy via CI/CD
-git push origin main    # Triggers GitHub Actions CD pipeline
-```
-
-### Environment Promotion
-```
-Development → Staging → UAT → Production
-     ↑              ↑
-  make dev    GitHub Actions
-```
-
----
-
-## Monitoring & Alerts
-
-- **Prometheus** scrapes API metrics at `/metrics`
-- **Grafana** dashboards: AML operations, model performance, system health
-- **Azure Monitor** for production alerting + PagerDuty integration
-- **Model drift** detected via PSI (Population Stability Index) — auto-retraining triggered
-
----
-
-## License & Security Disclosure
-
-Internal use only. All PII is encrypted. Report security vulnerabilities to: `security@bank.de`
+*Built with: FastAPI · scikit-learn · LightGBM · SHAP · Chart.js · structlog*  
+*Target: AML/Compliance Engineer roles at Swiss and German banks*
